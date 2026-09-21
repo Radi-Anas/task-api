@@ -1,4 +1,3 @@
-@'
 name: CI
 
 on:
@@ -27,4 +26,3 @@ jobs:
 
       - name: Run tests
         run: pytest
-'@ | Set-Content .github\workflows\ci.yml
