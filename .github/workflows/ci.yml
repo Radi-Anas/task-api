@@ -14,6 +14,26 @@ jobs:
 
     env:
       PYTHONPATH: .
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: taskdb
+      DB_USER: taskuser
+      DB_PASSWORD: taskpassword
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: taskuser
+          POSTGRES_PASSWORD: taskpassword
+          POSTGRES_DB: taskdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taskuser -d taskdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
@@ -26,6 +46,14 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Initialize database
+        run: |
+          PGPASSWORD=taskpassword psql \
+            -h localhost \
+            -U taskuser \
+            -d taskdb \
+            -f db/init.sql
 
       - name: Run tests
         run: pytest

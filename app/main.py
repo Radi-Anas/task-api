@@ -1,6 +1,7 @@
 import psycopg2
 from fastapi import FastAPI
 from pydantic import BaseModel
+import os
 
 app = FastAPI()
 
@@ -12,13 +13,12 @@ class Task(BaseModel):
 
 def get_connection():
     return psycopg2.connect(
-        host="postgres",
-        port=5432,
-        database="taskdb",
-        user="taskuser",
-        password="taskpassword"
+        host=os.getenv("DB_HOST", "postgres"),
+        port=os.getenv("DB_PORT", "5432"),
+        database=os.getenv("DB_NAME", "taskdb"),
+        user=os.getenv("DB_USER", "taskuser"),
+        password=os.getenv("DB_PASSWORD", "taskpassword")
     )
-
 
 @app.get("/health")
 def health_check():
