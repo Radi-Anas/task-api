@@ -80,9 +80,9 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+            -t ghcr.io/${{ GITHUB_REPOSITORY }}:${{ GITHUB.SHA }} .
 
       - name: Push Docker image
         run: |
           docker push \
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ GITHUB_REPOSITORY }}:${{ GITHUB.SHA }}
