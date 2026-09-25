@@ -86,7 +86,8 @@ jobs:
         run: |
           IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
           docker push "$IMAGE_NAME:$GITHUB_SHA"
-                - name: Run Docker container
+
+      - name: Run Docker container
         run: |
           IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
           docker run -d \
