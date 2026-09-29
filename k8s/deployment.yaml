@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: task-api
-          image: ghcr.io/radi-anas/task-api:207c5dd019ff0a9c21897fb5b4f778d8fd796b68
+          image: ghcr.io/radi-anas/task-api:abfcf486ec18611b86aaeb835eca7783eb378850
 
           ports:
             - containerPort: 8000
