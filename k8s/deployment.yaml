@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: task-api
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: task-api
+
+  template:
+    metadata:
+      labels:
+        app: task-api
+
+    spec:
+      containers:
+        - name: task-api
+          image: ghcr.io/radi-anas/task-api:207c5dd019ff0a9c21897fb5b4f778d8fd796b68
+
+          ports:
+            - containerPort: 8000
+            
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          envFrom:
+            - configMapRef:
+                name: task-api-config
+
+            - secretRef:
+                name: task-api-secret

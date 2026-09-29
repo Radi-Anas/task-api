@@ -22,7 +22,7 @@ def get_connection():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "version": "2"}
 
 
 @app.get("/tasks")
