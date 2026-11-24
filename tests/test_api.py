@@ -1,4 +1,4 @@
-import os
+import uuid
 
 import psycopg2
 import pytest
@@ -15,20 +15,21 @@ def client():
 
 
 @pytest.fixture
-def clean_tasks(client):
-    """
-    Empty the tasks table before each database integration test.
+def task_title():
+    """Generate a unique title and remove only this test's record afterwards."""
+    title = f"pytest-task-{uuid.uuid4()}"
 
-    Run the test suite only against a dedicated test database. The default
-    database name can be overridden with DB_NAME.
-    """
+    yield title
+
     pool = app.state.db_pool
     connection = pool.getconn()
-
     try:
         with connection.cursor() as cursor:
-            cursor.execute("TRUNCATE TABLE tasks RESTART IDENTITY")
+            cursor.execute("DELETE FROM tasks WHERE title = %s", (title,))
         connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         pool.putconn(connection)
 
@@ -61,18 +62,18 @@ def test_create_task_missing_title(client):
     assert response.status_code == 422
 
 
-def test_get_tasks(client, clean_tasks):
+def test_get_tasks(client):
     response = client.get("/tasks")
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert isinstance(response.json(), list)
 
 
-def test_create_task(client, clean_tasks):
+def test_create_task(client, task_title):
     response = client.post(
         "/tasks",
         json={
-            "title": "Integration test task",
+            "title": task_title,
             "completed": False,
         },
     )
@@ -80,19 +81,19 @@ def test_create_task(client, clean_tasks):
     assert response.status_code == 200
 
     data = response.json()
-    assert data["title"] == "Integration test task"
+    assert data["title"] == task_title
     assert data["completed"] is False
     assert isinstance(data["id"], int)
 
 
-def test_created_task_exists(client, clean_tasks):
+def test_created_task_exists(client, task_title):
     created = client.post(
         "/tasks",
-        json={"title": "Persisted task"},
+        json={"title": task_title},
     )
     assert created.status_code == 200
 
     response = client.get("/tasks")
 
     assert response.status_code == 200
-    assert response.json() == [created.json()]
+    assert created.json() in response.json()
