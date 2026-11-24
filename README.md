@@ -1,59 +1,52 @@
 # Task API
 
-A containerized task-management REST API built with **FastAPI** and **PostgreSQL**. The project demonstrates how to package a Python API and its database with Docker Compose, persist database data with a named volume, and verify API behavior with automated tests.
+A containerized task-management REST API built with **FastAPI**, **PostgreSQL 15**, and **Docker Compose**. This project demonstrates API development, database integration, connection pooling, container orchestration, and integration testing.
 
 ## Features
 
-- **FastAPI REST API** for creating and retrieving tasks.
-- **PostgreSQL 15** database with a simple relational schema.
-- **Docker** image for the API and **Docker Compose** orchestration for the API and database.
-- **Persistent database storage** through the `postgres_data` named volume.
-- **Automated API tests** using pytest and FastAPI's `TestClient`.
-- **Health endpoint** for a basic service availability check.
+- REST endpoints for creating and listing tasks.
+- PostgreSQL persistence with a Docker named volume.
+- Thread-safe PostgreSQL connection pooling with configurable limits.
+- FastAPI dependency injection for request-scoped database connections.
+- Pool startup and shutdown managed by the FastAPI application lifespan.
+- PostgreSQL health checks and service startup coordination.
+- Integration tests using pytest and FastAPI's TestClient.
 
 ## Architecture
 
 ```text
 Client
-  |
   | HTTP :8000
   v
-FastAPI application
-  |
-  | psycopg2 / PostgreSQL :5432
+FastAPI + Uvicorn
+  | psycopg2 connection pool
   v
-PostgreSQL 15
+PostgreSQL 15 :5432
   |
   v
 postgres_data volume
 ```
 
-Docker Compose starts two services:
-
 | Service | Responsibility | Port |
 |---|---|---|
-| `api` | Runs the FastAPI application with Uvicorn | `8000` |
-| `postgres` | Stores task records in PostgreSQL | `5432` |
+| `api` | FastAPI application | `8000` |
+| `postgres` | Persistent relational database | `5432` |
 
-The database schema is initialized from `db/init.sql` when PostgreSQL creates a new data directory.
+The schema is initialized from `db/init.sql` when PostgreSQL initializes a new data directory.
 
 ## Tech stack
 
 - Python 3.13
-- FastAPI
-- Uvicorn
-- PostgreSQL 15
-- psycopg2
+- FastAPI and Uvicorn
+- PostgreSQL 15 and psycopg2
 - Docker and Docker Compose
-- pytest and HTTPX (FastAPI test client dependency)
+- pytest and HTTPX
 
 ## Getting started
 
 ### Prerequisites
 
-Install:
-
-- Docker Desktop (or Docker Engine)
+- Docker Desktop or Docker Engine
 - Docker Compose
 
 ### 1. Clone the repository
@@ -63,27 +56,42 @@ git clone https://github.com/Radi-Anas/task-api.git
 cd task-api
 ```
 
-### 2. Start the application
+### 2. Configure the database password
+
+Copy the example environment file:
 
 ```bash
-docker compose up --build
+cp .env.example .env
 ```
 
-The API will be available at:
+Change `DB_PASSWORD` in `.env` before using the application beyond local experimentation. Docker Compose reads this file automatically.
 
-- API base URL: http://localhost:8000
-- Interactive Swagger documentation: http://localhost:8000/docs
-- Alternative ReDoc documentation: http://localhost:8000/redoc
+### 3. Build and start the services
 
-The PostgreSQL service is exposed on port `5432` for local development.
+```bash
+docker compose up --build -d
+```
 
-### 3. Stop the application
+Check service status and logs:
+
+```bash
+docker compose ps
+docker compose logs -f api
+```
+
+The API is available at:
+
+- API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### 4. Stop the services
 
 ```bash
 docker compose down
 ```
 
-To remove the database volume as well (this permanently deletes the persisted task data):
+To also delete the PostgreSQL volume and all persisted task data:
 
 ```bash
 docker compose down -v
@@ -95,22 +103,20 @@ docker compose down -v
 
 `GET /health`
 
-Returns the application's basic health status.
-
 Example response:
 
 ```json
 {
   "status": "healthy",
-  "version": "2"
+  "version": "3"
 }
 ```
 
-### Retrieve all tasks
+### List tasks
 
 `GET /tasks`
 
-Returns all tasks ordered by their database ID.
+Returns tasks ordered by ID.
 
 Example response:
 
@@ -128,7 +134,7 @@ Example response:
 
 `POST /tasks`
 
-Request body:
+Request:
 
 ```json
 {
@@ -137,7 +143,7 @@ Request body:
 }
 ```
 
-The `title` field is required. The `completed` field is optional and defaults to `false`.
+The `title` field is required. `completed` defaults to `false`.
 
 Example response:
 
@@ -151,7 +157,7 @@ Example response:
 
 ## Database schema
 
-The `tasks` table is defined in `db/init.sql`:
+The `tasks` table is created by `db/init.sql`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -159,34 +165,41 @@ The `tasks` table is defined in `db/init.sql`:
 | `title` | TEXT NOT NULL | Task title |
 | `completed` | BOOLEAN | Completion status; defaults to `false` |
 
-## Running tests
+## Database connection management
 
-The test suite is located in `tests/test_api.py`. It covers:
+The application creates a `ThreadedConnectionPool` during FastAPI startup and closes it during shutdown.
 
-- Health endpoint response.
-- Request validation for invalid or missing task titles.
-- Retrieving tasks.
-- Creating a task and checking that it appears in the task list.
-
-Run the tests in an environment where the API's Python dependencies are installed and a reachable PostgreSQL database is available:
-
-```bash
-pytest -v
-```
+- Each request borrows a connection through the `get_db` dependency.
+- The dependency returns the connection to the pool after the request.
+- Failed requests roll back their transaction before the connection is reused.
+- Pool size is controlled by `DB_POOL_MIN` and `DB_POOL_MAX`.
 
 ## Configuration
 
-The API reads its PostgreSQL connection settings from environment variables:
+| Variable | Default | Purpose |
+|---|---|---|
+| `DB_HOST` | `postgres` | PostgreSQL hostname |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `taskdb` | Database name |
+| `DB_USER` | `taskuser` | Database user |
+| `DB_PASSWORD` | `taskpassword` | Local development password |
+| `DB_POOL_MIN` | `1` | Minimum pooled connections |
+| `DB_POOL_MAX` | `10` | Maximum pooled connections |
 
-| Variable | Default value |
-|---|---|
-| `DB_HOST` | `postgres` |
-| `DB_PORT` | `5432` |
-| `DB_NAME` | `taskdb` |
-| `DB_USER` | `taskuser` |
-| `DB_PASSWORD` | `taskpassword` |
+Do not commit real credentials. The `.env` file is excluded through `.gitignore`.
 
-These values are currently defined directly in `docker-compose.yml` for local development. Replace the example credentials and move secrets to an environment file or secret manager before using the project beyond a local learning environment.
+## Running tests
+
+Start the services first so the API container can connect to PostgreSQL:
+
+```bash
+docker compose up --build -d
+docker compose exec api pytest -v
+```
+
+The tests cover health checks, request validation, task creation, and task retrieval. Each database test uses a unique task title and deletes only its own test record during cleanup; it does not truncate the task table.
+
+The test suite uses the database configured by the container. Do not point it at a production database.
 
 ## Project structure
 
@@ -194,28 +207,26 @@ These values are currently defined directly in `docker-compose.yml` for local de
 task-api/
 ├── app/
 │   ├── __init__.py
-│   └── main.py              # FastAPI routes and PostgreSQL access
+│   └── main.py              # API routes, pool and DB dependency
 ├── db/
-│   └── init.sql             # Database initialization script
+│   └── init.sql             # Database schema
 ├── tests/
-│   └── test_api.py          # API tests
-├── Dockerfile               # API container image
-├── docker-compose.yml       # API and PostgreSQL services
-├── requirements.txt         # Python dependencies
-└── .gitignore
+│   └── test_api.py          # API integration tests
+├── .env.example             # Example local configuration
+├── .gitignore
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
 ```
 
-## Current scope and possible improvements
+## Next improvements
 
-The current implementation supports creating and listing tasks. Useful next steps would be:
-
-- Add endpoints to retrieve, update, and delete an individual task.
-- Add database connection pooling and safer connection cleanup.
-- Add readiness checks and service startup coordination for PostgreSQL.
-- Use a `.env` file or a secrets manager instead of hard-coded development credentials.
-- Add integration-test database isolation and test fixtures.
-- Add CI to run tests automatically on each push or pull request.
+- Add get-by-ID, update, and delete endpoints.
+- Add database readiness to the API health check.
+- Add migrations with Alembic instead of relying only on initialization SQL.
+- Add CI to run tests on every push and pull request.
+- Add structured logging and API error handling.
 
 ---
 
-Built as a hands-on project for learning Python API development, relational database integration, containerization, and service orchestration.
+Built as a hands-on project for learning backend development, database integration, and containerized services.
