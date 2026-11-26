@@ -41,20 +41,27 @@ app = FastAPI(
 class Task(BaseModel):
     title: str
     completed: bool = False
-
+    
 
 def get_db() -> Generator[PostgreSQLConnection, None, None]:
-    """Borrow a connection for one request and always return it to the pool."""
+    """Borrow a connection and return it in a clean state."""
     pool: ThreadedConnectionPool = app.state.db_pool
     connection = pool.getconn()
 
     try:
         yield connection
-    except Exception:
-        connection.rollback()
-        raise
     finally:
-        pool.putconn(connection)
+        if connection.closed:
+            pool.putconn(connection, close=True)
+        else:
+            try:
+                connection.rollback()
+            except Exception:
+                pool.putconn(connection, close=True)
+                raise
+            else:
+                pool.putconn(connection)
+
 
 
 @app.get("/health")

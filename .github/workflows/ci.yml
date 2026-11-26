@@ -8,8 +8,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: Run automated tests
     runs-on: ubuntu-latest
 
     env:
@@ -55,10 +59,11 @@ jobs:
             -d taskdb \
             -f db/init.sql
 
-      - name: Run tests
-        run: pytest
+      - name: Run automated tests
+        run: pytest -v
 
   docker:
+    name: Build and validate Docker image
     needs: test
     runs-on: ubuntu-latest
 
@@ -70,44 +75,106 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to container registry
+      - name: Build Docker image
+        run: |
+          IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+          docker build -t "$IMAGE_NAME:$GITHUB_SHA" .
+
+      - name: Create Docker network
+        run: docker network create task-api-network
+
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name task-api-postgres \
+            --network task-api-network \
+            -e POSTGRES_USER=taskuser \
+            -e POSTGRES_PASSWORD=taskpassword \
+            -e POSTGRES_DB=taskdb \
+            postgres:15
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if docker exec task-api-postgres \
+              pg_isready -U taskuser -d taskdb; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "PostgreSQL failed to become ready"
+          docker logs task-api-postgres
+          exit 1
+
+      - name: Initialize database
+        run: |
+          docker exec -i task-api-postgres \
+            psql -U taskuser -d taskdb < db/init.sql
+
+      - name: Start API container
+        run: |
+          IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
+
+          docker run -d \
+            --name task-api \
+            --network task-api-network \
+            -p 8000:8000 \
+            -e DB_HOST=task-api-postgres \
+            -e DB_PORT=5432 \
+            -e DB_NAME=taskdb \
+            -e DB_USER=taskuser \
+            -e DB_PASSWORD=taskpassword \
+            "$IMAGE_NAME:$GITHUB_SHA"
+
+      - name: Wait for API
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "API failed to become ready"
+          docker logs task-api
+          exit 1
+
+      - name: Verify database integration
+        run: |
+          curl -fsS -X POST \
+            http://localhost:8000/tasks \
+            -H "Content-Type: application/json" \
+            -d '{"title":"CI smoke test","completed":false}' \
+            -o response.json
+
+          cat response.json
+
+          grep -q '"title":"CI smoke test"' response.json
+
+          curl -fsS http://localhost:8000/tasks \
+            -o tasks.json
+
+          cat tasks.json
+
+          grep -q '"title":"CI smoke test"' tasks.json
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
-        run: |
-          IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
-          docker build -t "$IMAGE_NAME:$GITHUB_SHA" .
-
       - name: Push Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
           docker push "$IMAGE_NAME:$GITHUB_SHA"
 
-      - name: Run Docker container
-        run: |
-          IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
-          docker run -d \
-            --name task-api \
-            -p 8000:8000 \
-            "$IMAGE_NAME:$GITHUB_SHA"
-
-      - name: Wait for API
-        run: |
-          for i in {1..30}; do
-            if curl -fs http://localhost:8000/health; then
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "API did not become ready"
-          docker logs task-api
-          exit 1
-
-      - name: Stop Docker container
+      - name: Cleanup
         if: always()
-        run: docker rm -f task-api
+        run: |
+          docker rm -f task-api task-api-postgres 2>/dev/null || true
+          docker network rm task-api-network 2>/dev/null || true
