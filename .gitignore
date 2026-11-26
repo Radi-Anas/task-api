@@ -1,4 +1,19 @@
+# Database backups
 taskdb_backup.sql
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Environment variables and secrets
 .env
+.env.*
+!.env.example
+
+# Local security scan artifacts
+trivy-report.json
+image-sbom.json
+task-api-image.tar
