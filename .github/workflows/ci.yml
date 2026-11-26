@@ -80,6 +80,16 @@ jobs:
           IMAGE_NAME=$(echo "ghcr.io/$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')
           docker build -t "$IMAGE_NAME:$GITHUB_SHA" .
 
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/radi-anas/task-api:${{ github.sha }}
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+
       - name: Create Docker network
         run: docker network create task-api-network
 
