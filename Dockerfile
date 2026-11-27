@@ -12,9 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY requirements-lock.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt \
+RUN pip install --no-cache-dir -r requirements-lock.txt \
     && rm -rf /usr/local/lib/python3.13/site-packages/pip \
               /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
               /usr/local/bin/pip \
